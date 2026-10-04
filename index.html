@@ -12,10 +12,16 @@ const USERS_KEY='attendance_users_v1';
 const yen=n=>'¥'+Math.round(Number(n)||0).toLocaleString('ja-JP'); const pad=n=>String(n).padStart(2,'0');
 function users(){try{return JSON.parse(localStorage.getItem(USERS_KEY)||'[]')}catch{return[]}}
 function records(name){try{return JSON.parse(localStorage.getItem('attendance_records_user_'+encodeURIComponent(name))||'[]')}catch{return[]}}
-function mins(t){if(!t)return null;const [h,m]=String(t).split(':').map(Number);return h*60+m} function diff(a,b){if(a==null||b==null)return 0;let d=b-a;return d<0?d+1440:d}
+function mins(t){if(!t)return null;const [h,m]=String(t).split(':').map(Number);if(!Number.isFinite(h)||!Number.isFinite(m)||h<0||h>23||m<0||m>59)return null;return h*60+m}
+function interval(start,end){const a=mins(start),b=mins(end);if(a==null||b==null)return null;return [a,b<a?b+1440:b]}
+function mergeIntervals(items){const a=items.filter(Boolean).sort((x,y)=>x[0]-y[0]);const out=[];for(const x of a){if(!out.length||x[0]>out[out.length-1][1])out.push([...x]);else out[out.length-1][1]=Math.max(out[out.length-1][1],x[1])}return out}
+function duration(items){return mergeIntervals(items).reduce((n,[a,b])=>n+Math.max(0,b-a),0)}
+function overlapDuration(a,b){let n=0;for(const x of mergeIntervals(a))for(const y of mergeIntervals(b))n+=Math.max(0,Math.min(x[1],y[1])-Math.max(x[0],y[0]));return n}
 function getSessions(r){return Array.isArray(r?.sessions)?r.sessions:(r?.in?[{in:r.in,out:r.out||null}]:[])}
-function breakTotal(r){return (Array.isArray(r?.breaks)?r.breaks:[]).reduce((s,b)=>s+(b.start&&b.end?diff(mins(b.start),mins(b.end)):0),0)}
-function workTotal(r){let t=0;getSessions(r).forEach(s=>{if(s.in&&s.out)t+=diff(mins(s.in),mins(s.out))});return Math.max(0,t-breakTotal(r))}
+function sessionIntervals(r){return getSessions(r).filter(s=>s&&s.in&&s.out).map(s=>interval(s.in,s.out)).filter(Boolean)}
+function breakIntervals(r){return (Array.isArray(r?.breaks)?r.breaks:[]).filter(b=>b&&b.start&&b.end).map(b=>interval(b.start,b.end)).filter(Boolean)}
+function breakTotal(r){return duration(breakIntervals(r))}
+function workTotal(r){const work=sessionIntervals(r),br=breakIntervals(r);return Math.max(0,duration(work)-overlapDuration(work,br))}
 function fmt(m){return Math.floor(m/60)+'時間'+(m%60)+'分'}
 function key(n){return 'salary_settings_'+encodeURIComponent(n)} function settings(n){try{return JSON.parse(localStorage.getItem(key(n))||'{}')}catch{return{}}}
 const u=document.getElementById('user'), mo=document.getElementById('month'); const now=new Date();mo.value=now.getFullYear()+'-'+pad(now.getMonth()+1);
@@ -23,5 +29,5 @@ function init(){const us=users();u.innerHTML='';us.forEach(n=>{const o=document.
 function loadSettings(){const s=settings(u.value);document.getElementById('rate').value=s.rate??1200;document.getElementById('allowance').value=s.allowance??0;document.getElementById('deduction').value=s.deduction??0}
 function calc(){const name=u.value;if(!name){document.getElementById('details').textContent='登録者がいません';return}const [y,m]=mo.value.split('-').map(Number),prefix=`${y}/${pad(m)}/`;const rs=records(name).filter(r=>String(r.date||'').startsWith(prefix));let work=0,br=0,days=0;rs.forEach(r=>{if(getSessions(r).some(s=>s.in))days++;work+=workTotal(r);br+=breakTotal(r)});const rate=Number(document.getElementById('rate').value)||0,al=Number(document.getElementById('allowance').value)||0,de=Number(document.getElementById('deduction').value)||0,base=work/60*rate,net=base+al-de;daysEl=document.getElementById('days');daysEl.textContent=days+'日';document.getElementById('hours').textContent=fmt(work);document.getElementById('breaks').textContent=fmt(br);document.getElementById('base').textContent=yen(base);document.getElementById('net').textContent=yen(net);document.getElementById('formula').textContent=`基本給 ${yen(base)} ＋ 手当 ${yen(al)} － 控除 ${yen(de)}`;document.getElementById('details').innerHTML=rs.length?[...rs].sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(r=>`<div class="detail"><span>${r.date}</span><b>${fmt(workTotal(r))}</b></div>`).join(''):'<div class="notice">この月の勤怠記録はありません。</div>'}
 u.addEventListener('change',()=>{loadSettings();calc()});mo.addEventListener('change',calc);['rate','allowance','deduction'].forEach(id=>document.getElementById(id).addEventListener('input',calc));document.getElementById('save').onclick=()=>{if(!u.value)return;localStorage.setItem(key(u.value),JSON.stringify({rate:Number(rate.value)||0,allowance:Number(allowance.value)||0,deduction:Number(deduction.value)||0}));calc();alert('給与設定を保存しました。')};
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./service-worker.js').catch(()=>{});init();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./service-worker.js').then(r=>r.update()).catch(()=>{})}init();
 </script></body></html>
