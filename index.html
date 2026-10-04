@@ -13,6 +13,7 @@
     <input id="salaryPassword" type="password" maxlength="50" autocomplete="current-password" placeholder="パスワード">
     <p id="lockError" class="lock-error"></p>
     <button id="unlockSalary" type="button">給料管理を開く</button>
+    <button class="secondary" type="button" onclick="location.href='/attendance-system/'">← 勤怠管理に戻る</button>
   </div>
 </div>
 <main id="salaryApp" class="lock-hidden" class="wrap"><h1>給料管理</h1><div class="sub">勤怠管理と連携して月給を自動計算</div>
@@ -112,7 +113,7 @@ function init(){const us=users();u.innerHTML='';us.forEach(n=>{const o=document.
 function loadSettings(){const s=settings(u.value);document.getElementById('rate').value=s.rate??1200;document.getElementById('allowance').value=s.allowance??0;document.getElementById('deduction').value=s.deduction??0}
 function calc(){const name=u.value;if(!name){document.getElementById('details').textContent='登録者がいません';return}const [y,m]=mo.value.split('-').map(Number),prefix=`${y}/${pad(m)}/`;const rs=records(name).filter(r=>String(r.date||'').startsWith(prefix));let work=0,br=0,days=0;rs.forEach(r=>{if(getSessions(r).some(s=>s.in))days++;work+=workTotal(r);br+=breakTotal(r)});const rate=Number(document.getElementById('rate').value)||0,al=Number(document.getElementById('allowance').value)||0,de=Number(document.getElementById('deduction').value)||0,base=work/60*rate,net=base+al-de;daysEl=document.getElementById('days');daysEl.textContent=days+'日';document.getElementById('hours').textContent=fmt(work);document.getElementById('breaks').textContent=fmt(br);document.getElementById('base').textContent=yen(base);document.getElementById('net').textContent=yen(net);document.getElementById('formula').textContent=`基本給 ${yen(base)} ＋ 手当 ${yen(al)} － 控除 ${yen(de)}`;document.getElementById('details').innerHTML=rs.length?[...rs].sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(r=>`<div class="detail"><span>${r.date}</span><b>${fmt(workTotal(r))}</b></div>`).join(''):'<div class="notice">この月の勤怠記録はありません。</div>'}
 u.addEventListener('change',()=>{loadSettings();calc()});mo.addEventListener('change',calc);['rate','allowance','deduction'].forEach(id=>document.getElementById(id).addEventListener('input',calc));document.getElementById('save').onclick=()=>{if(!u.value)return;localStorage.setItem(key(u.value),JSON.stringify({rate:Number(rate.value)||0,allowance:Number(allowance.value)||0,deduction:Number(deduction.value)||0}));calc();alert('給与設定を保存しました。')};
-if('serviceWorker' in navigator){navigator.serviceWorker.register('./service-worker.js?v=4-password-lock').then(r=>r.update()).catch(()=>{})}init();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./service-worker.js?v=5-attendance-back').then(r=>r.update()).catch(()=>{})}init();
 
 // --- インセンティブ追加 v3 ---
 (function(){

@@ -1,5 +1,5 @@
 // 給料管理アプリ v4 - パスワードロック + キャッシュ更新版
-const CACHE_NAME='salary-management-v4-password-lock-20261005';
+const CACHE_NAME='salary-management-v5-attendance-back-20261005';
 const APP_FILES=['./','./index.html','./manifest.json'];
 
 self.addEventListener('install',event=>{
