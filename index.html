@@ -2,7 +2,8 @@
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f6fb;color:#172033}.wrap{max-width:760px;margin:auto;padding:28px 18px 60px}h1{font-size:34px;margin:12px 0 4px}.sub{color:#687386;margin-bottom:22px}.card{background:#fff;border-radius:22px;padding:20px;margin:14px 0;box-shadow:0 8px 24px #1f29370d}label{display:block;font-size:13px;color:#667085;margin:10px 0 6px}select,input{width:100%;padding:14px;border:1px solid #d6dce7;border-radius:13px;font-size:16px;background:#fff}button{width:100%;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:700;background:#3563e9;color:#fff;margin-top:12px}.secondary{background:#eaf0ff;color:#2852c8}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:#f6f8fc;border-radius:15px;padding:14px}.stat small{display:block;color:#6b7280;margin-bottom:5px}.stat strong{font-size:20px}.pay{background:#172033;color:white}.pay small{color:#cbd5e1}.pay strong{font-size:28px}.notice{background:#fff7db;color:#745b00;padding:12px;border-radius:12px;font-size:13px;line-height:1.5}.ok{background:#eaf8ef;color:#176b37}.people{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.pill{width:auto;padding:9px 13px;margin:0;background:#eef2f7;color:#273142}.detail{border-top:1px solid #edf0f5;padding:10px 0;display:flex;justify-content:space-between;gap:12px}.detail span{color:#667085}.hidden{display:none}@media(max-width:480px){.wrap{padding:20px 14px 50px}h1{font-size:30px}}
 </style></head><body><main class="wrap"><h1>給料管理</h1><div class="sub">勤怠管理と連携して月給を自動計算</div>
 <div id="sync" class="notice">勤怠データを確認しています…</div>
-<section class="card"><h2>給与計算</h2><label>対象者</label><select id="user"></select><label>対象月</label><input id="month" type="month"><div class="grid"><div><label>時給（円）</label><input id="rate" type="number" min="0" inputmode="numeric"></div><div><label>交通費・手当（円）</label><input id="allowance" type="number" inputmode="numeric" value="0"></div></div><label>控除（円）</label><input id="deduction" type="number" inputmode="numeric" value="0"><button id="save">設定を保存して再計算</button></section>
+<section class="card"><h2>給与計算</h2><label>対象者</label><select id="user"></select><label>対象月</label><input id="month" type="month"><div class="grid"><div><label>時給（円）</label><input id="rate" type="number" min="0" inputmode="numeric"></div><div><label>交通費・手当（円）</label><input id="allowance" type="number" inputmode="numeric" value="0">
+<div class="field"><label>インセンティブ（円）</label><input id="incentive" type="number" inputmode="numeric" min="0" step="1" value="0"></div></div></div><label>控除（円）</label><input id="deduction" type="number" inputmode="numeric" value="0"><button id="save">設定を保存して再計算</button></section>
 <section class="card"><h2>月間集計</h2><div class="grid"><div class="stat"><small>出勤日数</small><strong id="days">0日</strong></div><div class="stat"><small>実働合計</small><strong id="hours">0時間0分</strong></div><div class="stat"><small>休憩合計</small><strong id="breaks">0時間0分</strong></div><div class="stat"><small>基本給</small><strong id="base">¥0</strong></div></div></section>
 <section class="card pay"><small>差引支給額</small><strong id="net">¥0</strong><div style="margin-top:10px;font-size:14px;color:#d9e1ef" id="formula"></div></section>
 <section class="card"><h2>日別明細</h2><div id="details"></div></section>
@@ -30,4 +31,51 @@ function loadSettings(){const s=settings(u.value);document.getElementById('rate'
 function calc(){const name=u.value;if(!name){document.getElementById('details').textContent='登録者がいません';return}const [y,m]=mo.value.split('-').map(Number),prefix=`${y}/${pad(m)}/`;const rs=records(name).filter(r=>String(r.date||'').startsWith(prefix));let work=0,br=0,days=0;rs.forEach(r=>{if(getSessions(r).some(s=>s.in))days++;work+=workTotal(r);br+=breakTotal(r)});const rate=Number(document.getElementById('rate').value)||0,al=Number(document.getElementById('allowance').value)||0,de=Number(document.getElementById('deduction').value)||0,base=work/60*rate,net=base+al-de;daysEl=document.getElementById('days');daysEl.textContent=days+'日';document.getElementById('hours').textContent=fmt(work);document.getElementById('breaks').textContent=fmt(br);document.getElementById('base').textContent=yen(base);document.getElementById('net').textContent=yen(net);document.getElementById('formula').textContent=`基本給 ${yen(base)} ＋ 手当 ${yen(al)} － 控除 ${yen(de)}`;document.getElementById('details').innerHTML=rs.length?[...rs].sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(r=>`<div class="detail"><span>${r.date}</span><b>${fmt(workTotal(r))}</b></div>`).join(''):'<div class="notice">この月の勤怠記録はありません。</div>'}
 u.addEventListener('change',()=>{loadSettings();calc()});mo.addEventListener('change',calc);['rate','allowance','deduction'].forEach(id=>document.getElementById(id).addEventListener('input',calc));document.getElementById('save').onclick=()=>{if(!u.value)return;localStorage.setItem(key(u.value),JSON.stringify({rate:Number(rate.value)||0,allowance:Number(allowance.value)||0,deduction:Number(deduction.value)||0}));calc();alert('給与設定を保存しました。')};
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./service-worker.js').then(r=>r.update()).catch(()=>{})}init();
+
+// --- インセンティブ追加 v3 ---
+(function(){
+  const incentiveInput = document.getElementById('incentive');
+  if (!incentiveInput) return;
+  function key(){
+    const p=document.getElementById('person')||document.getElementById('employee')||document.querySelector('select');
+    const m=document.getElementById('month')||document.querySelector('input[type="month"]');
+    return 'salaryIncentive:'+(p?p.value:'')+':'+(m?m.value:'');
+  }
+  function load(){ incentiveInput.value = Number(localStorage.getItem(key())||0); }
+  function save(){ localStorage.setItem(key(), String(Math.max(0,Number(incentiveInput.value)||0))); }
+  incentiveInput.addEventListener('change', save);
+  document.querySelectorAll('select,input[type="month"]').forEach(el=>el.addEventListener('change',()=>setTimeout(load,0)));
+  const buttons=[...document.querySelectorAll('button')];
+  buttons.filter(b=>b.textContent.includes('設定を保存')).forEach(b=>b.addEventListener('click',()=>{save();setTimeout(apply,20)}));
+  function yenToNum(s){return Number(String(s||'').replace(/[^\d-]/g,''))||0}
+  function fmt(n){return '¥'+Math.round(n).toLocaleString('ja-JP')}
+  function apply(){
+    const inc=Math.max(0,Number(incentiveInput.value)||0);
+    // Locate summary labels and values, preserving the app's existing calculation.
+    const all=[...document.querySelectorAll('body *')];
+    let basicLabel=all.find(e=>e.children.length===0 && e.textContent.trim()==='基本給');
+    let netLabel=all.find(e=>e.children.length===0 && e.textContent.trim().startsWith('差引支給額'));
+    if(!basicLabel||!netLabel)return;
+    const basicBox=basicLabel.parentElement;
+    const basicValue=basicBox && [...basicBox.querySelectorAll('*')].find(e=>e.children.length===0 && /^¥[\d,]+$/.test(e.textContent.trim()));
+    const basic=basicValue?yenToNum(basicValue.textContent):0;
+    // Find allowance/deduction inputs from labels.
+    function valByLabel(txt){
+      const lab=all.find(e=>e.tagName==='LABEL' && e.textContent.includes(txt));
+      const inp=lab && (lab.parentElement.querySelector('input') || lab.nextElementSibling);
+      return inp?Number(inp.value)||0:0;
+    }
+    const allowance=valByLabel('交通費・手当');
+    const deduction=valByLabel('控除');
+    const total=basic+allowance+inc-deduction;
+    // Replace only the numeric portion in the net-pay area.
+    const target=[...netLabel.parentElement.querySelectorAll('*')].find(e=>e.children.length===0 && /^¥[\d,]+$/.test(e.textContent.trim()));
+    if(target) target.textContent=fmt(total);
+    else if(netLabel.textContent.includes('¥')) netLabel.textContent='差引支給額 '+fmt(total);
+  }
+  load();
+  incentiveInput.addEventListener('input', apply);
+  setTimeout(apply,100);
+})();
+
 </script></body></html>
