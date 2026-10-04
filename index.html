@@ -1,6 +1,21 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><link rel="manifest" href="manifest.json"><title>給料管理</title><style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f3f6fb;color:#172033}.wrap{max-width:760px;margin:auto;padding:28px 18px 60px}h1{font-size:34px;margin:12px 0 4px}.sub{color:#687386;margin-bottom:22px}.card{background:#fff;border-radius:22px;padding:20px;margin:14px 0;box-shadow:0 8px 24px #1f29370d}label{display:block;font-size:13px;color:#667085;margin:10px 0 6px}select,input{width:100%;padding:14px;border:1px solid #d6dce7;border-radius:13px;font-size:16px;background:#fff}button{width:100%;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:700;background:#3563e9;color:#fff;margin-top:12px}.secondary{background:#eaf0ff;color:#2852c8}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:#f6f8fc;border-radius:15px;padding:14px}.stat small{display:block;color:#6b7280;margin-bottom:5px}.stat strong{font-size:20px}.pay{background:#172033;color:white}.pay small{color:#cbd5e1}.pay strong{font-size:28px}.notice{background:#fff7db;color:#745b00;padding:12px;border-radius:12px;font-size:13px;line-height:1.5}.ok{background:#eaf8ef;color:#176b37}.people{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.pill{width:auto;padding:9px 13px;margin:0;background:#eef2f7;color:#273142}.detail{border-top:1px solid #edf0f5;padding:10px 0;display:flex;justify-content:space-between;gap:12px}.detail span{color:#667085}.hidden{display:none}@media(max-width:480px){.wrap{padding:20px 14px 50px}h1{font-size:30px}}
-</style></head><body><main class="wrap"><h1>給料管理</h1><div class="sub">勤怠管理と連携して月給を自動計算</div>
+
+.lock-screen{position:fixed;inset:0;z-index:9999;background:#f3f6fb;display:flex;align-items:center;justify-content:center;padding:20px}
+.lock-box{width:min(430px,100%);background:#fff;border-radius:22px;padding:24px;box-shadow:0 12px 40px #1f293722}
+.lock-box h2{margin:0 0 8px;font-size:25px}.lock-box p{color:#667085;font-size:14px;line-height:1.6}
+.lock-error{color:#b42318!important;min-height:22px;margin:8px 0 0!important}.lock-hidden{display:none!important}
+</style></head><body>
+<div id="salaryLock" class="lock-screen">
+  <div class="lock-box">
+    <h2 id="lockTitle">🔐 給料管理</h2>
+    <p id="lockText">管理者パスワードを入力してください。</p>
+    <input id="salaryPassword" type="password" maxlength="50" autocomplete="current-password" placeholder="パスワード">
+    <p id="lockError" class="lock-error"></p>
+    <button id="unlockSalary" type="button">給料管理を開く</button>
+  </div>
+</div>
+<main id="salaryApp" class="lock-hidden" class="wrap"><h1>給料管理</h1><div class="sub">勤怠管理と連携して月給を自動計算</div>
 <div id="sync" class="notice">勤怠データを確認しています…</div>
 <section class="card"><h2>給与計算</h2><label>対象者</label><select id="user"></select><label>対象月</label><input id="month" type="month"><div class="grid"><div><label>時給（円）</label><input id="rate" type="number" min="0" inputmode="numeric"></div><div><label>交通費・手当（円）</label><input id="allowance" type="number" inputmode="numeric" value="0">
 <div class="field"><label>インセンティブ（円）</label><input id="incentive" type="number" inputmode="numeric" min="0" step="1" value="0"></div></div></div><label>控除（円）</label><input id="deduction" type="number" inputmode="numeric" value="0"><button id="save">設定を保存して再計算</button></section>
@@ -8,7 +23,74 @@
 <section class="card pay"><small>差引支給額</small><strong id="net">¥0</strong><div style="margin-top:10px;font-size:14px;color:#d9e1ef" id="formula"></div></section>
 <section class="card"><h2>日別明細</h2><div id="details"></div></section>
 <section class="card"><h2>勤怠管理との連携</h2><div class="notice ok">このアプリと勤怠管理を同じ <b>mv59fp8thr-lab.github.io</b> で公開すると、勤怠側の登録者・勤務記録を自動で読み込みます。</div><button class="secondary" onclick="location.href='/attendance-system/'">勤怠管理を開く</button></section>
+
+<section class="card"><h2>セキュリティ</h2>
+<div class="notice">給料管理を開くためのパスワードを変更できます。</div>
+<button class="secondary" id="changeSalaryPassword" type="button">パスワードを変更</button>
+</section>
 </main><script>
+
+const SALARY_PASSWORD_KEY='salary_management_password_v1';
+(function(){
+  const lock=document.getElementById('salaryLock');
+  const app=document.getElementById('salaryApp');
+  const input=document.getElementById('salaryPassword');
+  const title=document.getElementById('lockTitle');
+  const text=document.getElementById('lockText');
+  const error=document.getElementById('lockError');
+  const unlock=document.getElementById('unlockSalary');
+
+  function refreshLockText(){
+    const saved=localStorage.getItem(SALARY_PASSWORD_KEY);
+    if(saved){
+      title.textContent='🔐 給料管理';
+      text.textContent='管理者パスワードを入力してください。';
+      input.placeholder='パスワード';
+      input.autocomplete='current-password';
+    }else{
+      title.textContent='🔐 初回パスワード設定';
+      text.textContent='給料管理を保護するパスワードを設定してください。4文字以上で入力してください。';
+      input.placeholder='新しいパスワード';
+      input.autocomplete='new-password';
+    }
+  }
+
+  function tryUnlock(){
+    const saved=localStorage.getItem(SALARY_PASSWORD_KEY);
+    const value=input.value;
+    error.textContent='';
+    if(!saved){
+      if(value.length<4){error.textContent='4文字以上で設定してください。';return;}
+      localStorage.setItem(SALARY_PASSWORD_KEY,value);
+      alert('給料管理のパスワードを設定しました。');
+    }else if(value!==saved){
+      error.textContent='パスワードが違います。';
+      input.value='';
+      input.focus();
+      return;
+    }
+    lock.classList.add('lock-hidden');
+    app.classList.remove('lock-hidden');
+    input.value='';
+  }
+
+  refreshLockText();
+  unlock.addEventListener('click',tryUnlock);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter')tryUnlock();});
+  setTimeout(()=>input.focus(),50);
+
+  document.getElementById('changeSalaryPassword').addEventListener('click',()=>{
+    const current=prompt('現在のパスワードを入力してください。');
+    if(current===null)return;
+    if(current!==localStorage.getItem(SALARY_PASSWORD_KEY)){alert('現在のパスワードが違います。');return;}
+    const next=prompt('新しいパスワードを入力してください。（4文字以上）');
+    if(next===null)return;
+    if(next.length<4){alert('4文字以上で入力してください。');return;}
+    localStorage.setItem(SALARY_PASSWORD_KEY,next);
+    alert('パスワードを変更しました。');
+  });
+})();
+
 const USERS_KEY='attendance_users_v1';
 const yen=n=>'¥'+Math.round(Number(n)||0).toLocaleString('ja-JP'); const pad=n=>String(n).padStart(2,'0');
 function users(){try{return JSON.parse(localStorage.getItem(USERS_KEY)||'[]')}catch{return[]}}
@@ -30,7 +112,7 @@ function init(){const us=users();u.innerHTML='';us.forEach(n=>{const o=document.
 function loadSettings(){const s=settings(u.value);document.getElementById('rate').value=s.rate??1200;document.getElementById('allowance').value=s.allowance??0;document.getElementById('deduction').value=s.deduction??0}
 function calc(){const name=u.value;if(!name){document.getElementById('details').textContent='登録者がいません';return}const [y,m]=mo.value.split('-').map(Number),prefix=`${y}/${pad(m)}/`;const rs=records(name).filter(r=>String(r.date||'').startsWith(prefix));let work=0,br=0,days=0;rs.forEach(r=>{if(getSessions(r).some(s=>s.in))days++;work+=workTotal(r);br+=breakTotal(r)});const rate=Number(document.getElementById('rate').value)||0,al=Number(document.getElementById('allowance').value)||0,de=Number(document.getElementById('deduction').value)||0,base=work/60*rate,net=base+al-de;daysEl=document.getElementById('days');daysEl.textContent=days+'日';document.getElementById('hours').textContent=fmt(work);document.getElementById('breaks').textContent=fmt(br);document.getElementById('base').textContent=yen(base);document.getElementById('net').textContent=yen(net);document.getElementById('formula').textContent=`基本給 ${yen(base)} ＋ 手当 ${yen(al)} － 控除 ${yen(de)}`;document.getElementById('details').innerHTML=rs.length?[...rs].sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(r=>`<div class="detail"><span>${r.date}</span><b>${fmt(workTotal(r))}</b></div>`).join(''):'<div class="notice">この月の勤怠記録はありません。</div>'}
 u.addEventListener('change',()=>{loadSettings();calc()});mo.addEventListener('change',calc);['rate','allowance','deduction'].forEach(id=>document.getElementById(id).addEventListener('input',calc));document.getElementById('save').onclick=()=>{if(!u.value)return;localStorage.setItem(key(u.value),JSON.stringify({rate:Number(rate.value)||0,allowance:Number(allowance.value)||0,deduction:Number(deduction.value)||0}));calc();alert('給与設定を保存しました。')};
-if('serviceWorker' in navigator){navigator.serviceWorker.register('./service-worker.js').then(r=>r.update()).catch(()=>{})}init();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./service-worker.js?v=4-password-lock').then(r=>r.update()).catch(()=>{})}init();
 
 // --- インセンティブ追加 v3 ---
 (function(){
