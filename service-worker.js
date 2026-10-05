@@ -1,44 +1,51 @@
-// 給料管理アプリ v4 - パスワードロック + キャッシュ更新版
-const CACHE_NAME='salary-management-v5-attendance-back-20261005';
-const APP_FILES=['./','./index.html','./manifest.json'];
+// 給料管理 v7 - キャッシュ自動更新版
+const CACHE_NAME = 'salary-management-v7-cache-update-20261005';
+const ASSETS = ['./', './index.html', './manifest.json'];
 
-self.addEventListener('install',event=>{
+self.addEventListener('install', event => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_FILES)));
-});
-
-self.addEventListener('activate',event=>{
   event.waitUntil(
-    caches.keys()
-      .then(keys=>Promise.all(keys.filter(key=>key!==CACHE_NAME).map(key=>caches.delete(key))))
-      .then(()=>self.clients.claim())
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
   );
 });
 
-self.addEventListener('fetch',event=>{
-  if(event.request.method!=='GET')return;
-  const request=event.request;
-  if(request.mode==='navigate'){
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;
+
+  // HTML/画面はネット上の最新版を優先
+  if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(request,{cache:'no-store'})
-        .then(response=>{
-          const copy=response.clone();
-          caches.open(CACHE_NAME).then(cache=>cache.put('./index.html',copy));
+      fetch(event.request, {cache:'no-store'})
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
           return response;
         })
-        .catch(()=>caches.match('./index.html'))
+        .catch(() => caches.match('./index.html'))
     );
     return;
   }
+
+  // その他のファイルも最新版を取得し、失敗時のみキャッシュ
   event.respondWith(
-    fetch(request,{cache:'no-store'})
-      .then(response=>{
-        if(response&&response.ok){
-          const copy=response.clone();
-          caches.open(CACHE_NAME).then(cache=>cache.put(request,copy));
+    fetch(event.request, {cache:'no-store'})
+      .then(response => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
         }
         return response;
       })
-      .catch(()=>caches.match(request))
+      .catch(() => caches.match(event.request))
   );
 });
